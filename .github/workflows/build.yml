@@ -56,17 +56,20 @@ jobs:
           $abs_build = Join-Path $env:GITHUB_WORKSPACE "build"
           mkdir $abs_build -Force
           Set-Location $abs_build
-          # Mudado para Release e adicionado controle de concorrência do Linker
+          # Adicionado flags para desativar a compilação de testes pesados como o text_shape
           cmake -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_JOB_POOLS="link_pool=1" `
             -DCMAKE_JOB_POOL_LINK=link_pool `
+            -DENABLE_TESTS=OFF `
+            -DENABLE_EXAMPLES=OFF `
             -DLAF_BACKEND=skia `
             -DSKIA_DIR="$abs_skia" `
             -DSKIA_LIBRARY_DIR="$abs_skia\out\Release-x64" `
             -DSKIA_LIBRARY="$abs_skia\out\Release-x64\skia.lib" `
             -DENABLE_UPDATER=OFF `
             "$abs_src"
+
 
       - name: Compile with Ninja
         run: |
