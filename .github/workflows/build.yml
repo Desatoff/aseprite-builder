@@ -31,11 +31,12 @@ jobs:
       - name: Download & Extract Source
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri ${{ env.DOWNLOAD_URL }} -OutFile "aseprite_src.zip"
+          Invoke-WebRequest -Uri $env:DOWNLOAD_URL -OutFile "aseprite_src.zip"
           7z x "aseprite_src.zip" -o"temp_ext" -y
           $rootFile = Get-ChildItem -Path "temp_ext" -Filter "CMakeLists.txt" -Recurse | Select-Object -First 1
           mkdir aseprite -Force
           Get-ChildItem -Path "$($rootFile.Directory.FullName)\*" | Move-Item -Destination "aseprite" -Force
+
 
       - name: Download & Extract Skia
         shell: powershell
@@ -55,8 +56,11 @@ jobs:
           $abs_build = Join-Path $env:GITHUB_WORKSPACE "build"
           mkdir $abs_build -Force
           Set-Location $abs_build
+          # Mudado para Release e adicionado controle de concorrência do Linker
           cmake -G Ninja `
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_JOB_POOLS="link_pool=1" `
+            -DCMAKE_JOB_POOL_LINK=link_pool `
             -DLAF_BACKEND=skia `
             -DSKIA_DIR="$abs_skia" `
             -DSKIA_LIBRARY_DIR="$abs_skia\out\Release-x64" `
@@ -67,12 +71,12 @@ jobs:
       - name: Compile with Ninja
         run: |
           cd build
-          ninja
+          # Limita o paralelismo geral para não sufocar a memória RAM do runner
+          cmake --build . --parallel 2
 
       - name: Collect Dependencies (DLLs)
         shell: powershell
         run: |
-          # Copy OpenSSL DLLs to the bin folder so the app can run
           $binDir = "$env:GITHUB_WORKSPACE\build\bin"
           $sslDir = "C:\Program Files\OpenSSL\bin"
           Copy-Item "$sslDir\libcrypto-3-x64.dll" -Destination $binDir -Force
@@ -86,7 +90,7 @@ jobs:
           $iss = @"
           [Setup]
           AppName=Aseprite
-          AppVersion=${{ env.ASE_VER }}
+          AppVersion=$env:ASE_VER
           DefaultDirName={autopf}\Aseprite
           DefaultGroupName=Aseprite
           OutputBaseFilename=aseprite-setup
@@ -102,15 +106,14 @@ jobs:
           $iss | Out-File -FilePath "aseprite.iss" -Encoding utf8
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" aseprite.iss
 
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        shell: powershell
         if: success()
-        with:
-          tag_name: ${{ env.ASE_VER }}
-          name: Aseprite ${{ env.ASE_VER }}
-          files: installer/*.exe
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create $env:ASE_VER --title "Aseprite $env:ASE_VER" --target main build/bin/* installer/*.exe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
